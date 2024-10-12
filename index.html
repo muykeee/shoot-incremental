@@ -94,7 +94,7 @@
         </div>
     </div>
     <div id="leaderboard">
-        <h3>排行榜</h3>
+        <h3>全球排行榜</h3>
         <table>
             <thead>
                 <tr>
@@ -159,6 +159,9 @@
 
         let leaderboard = [];
         let canSubmitScore = true;
+
+        const REPO_OWNER = 'muykeee';
+        const REPO_NAME = 'shoot-incremental';
 
         function drawPlayer() {
             ctx.fillStyle = player.color;
@@ -316,29 +319,70 @@
             }, fireRate);
         }
 
-        function submitScore() {
+        async function submitScore() {
             if (!canSubmitScore) return;
 
             const playerName = document.getElementById('playerName').value.trim();
             if (playerName) {
-                leaderboard.push({ name: playerName, time: Math.floor(gameTime) });
-                leaderboard.sort((a, b) => b.time - a.time);
-                leaderboard = leaderboard.slice(0, 10); // 只保留前10名
-                updateLeaderboard();
+                const finalScore = score;
+                const finalTime = Math.floor(gameTime);
+
+                // 提交分数到 GitHub
+                await submitScoreToGitHub(playerName, finalScore, finalTime);
+
+                // 重新获取并更新排行榜
+                await updateLeaderboard();
+
                 canSubmitScore = false;
                 document.getElementById('submitScore').disabled = true;
             }
         }
 
-        function updateLeaderboard() {
-            const leaderboardBody = document.getElementById('leaderboardBody');
-            leaderboardBody.innerHTML = '';
-            leaderboard.forEach((entry, index) => {
-                const row = leaderboardBody.insertRow();
-                row.insertCell(0).textContent = index + 1;
-                row.insertCell(1).textContent = entry.name;
-                row.insertCell(2).textContent = entry.time + '秒';
+        async function submitScoreToGitHub(name, score, time) {
+            const response = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/issues`, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/vnd.github.v3+json',
+                    'Authorization': 'Bearer YOUR_GITHUB_TOKEN_HERE' // 请替换为您的GitHub令牌
+                },
+                body: JSON.stringify({
+                    title: `SCORE:${score},TIME:${time},NAME:${name}`,
+                    body: 'New score submission'
+                })
             });
+
+            if (response.ok) {
+                console.log('Score submitted successfully to GitHub');
+            } else {
+                console.error('Failed to submit score to GitHub');
+            }
+        }
+
+        async function getLeaderboardFromGitHub() {
+            const response = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/leaderboard.json`);
+            if (response.ok) {
+                const data = await response.json();
+                const content = atob(data.content);
+                return JSON.parse(content).leaderboard;
+            } else {
+                console.error('Failed to fetch leaderboard from GitHub');
+                return [];
+            }
+        }
+
+        async function updateLeaderboard() {
+            const githubLeaderboard = await getLeaderboardFromGitHub();
+            if (githubLeaderboard.length > 0) {
+                leaderboard = githubLeaderboard;
+                const leaderboardBody = document.getElementById('leaderboardBody');
+                leaderboardBody.innerHTML = '';
+                leaderboard.forEach((entry, index) => {
+                    const row = leaderboardBody.insertRow();
+                    row.insertCell(0).textContent = index + 1;
+                    row.insertCell(1).textContent = entry.name;
+                    row.insertCell(2).textContent = entry.time + '秒';
+                });
+            }
         }
 
         function handleTouchMove(e) {
@@ -382,70 +426,7 @@
         startFireInterval();
         startTime = new Date().getTime();
         gameLoop();
-
-        // GitHub 相关的函数
-        const REPO_OWNER = 'muykeee';
-        const REPO_NAME = 'shoot-incremental';
-
-        async function submitScoreToGitHub(name, score) {
-            const response = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/issues`, {
-                method: 'POST',
-                headers: {
-                    'Accept': 'application/vnd.github.v3+json',
-                },
-                body: JSON.stringify({
-                    title: `SCORE:${score},NAME:${name}`,
-                    body: 'New score submission'
-                })
-            });
-
-            if (response.ok) {
-                console.log('Score submitted successfully to GitHub');
-            } else {
-                console.error('Failed to submit score to GitHub');
-            }
-        }
-
-        async function getLeaderboardFromGitHub() {
-            const response = await fetch(`https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/leaderboard.json`);
-            if (response.ok) {
-                const data = await response.json();
-                return data.leaderboard;
-            } else {
-                console.error('Failed to fetch leaderboard from GitHub');
-                return [];
-            }
-        }
-
-        // 修改 submitScore 函数以包含 GitHub 提交
-        function submitScore() {
-            if (!canSubmitScore) return;
-
-            const playerName = document.getElementById('playerName').value.trim();
-            if (playerName) {
-                const finalScore = score;
-                leaderboard.push({ name: playerName, time: Math.floor(gameTime) });
-                leaderboard.sort((a, b) => b.time - a.time);
-                leaderboard = leaderboard.slice(0, 10); // 只保留前10名
-                updateLeaderboard();
-                canSubmitScore = false;
-                document.getElementById('submitScore').disabled = true;
-
-                // 提交分数到 GitHub
-                submitScoreToGitHub(playerName, finalScore);
-            }
-        }
-
-        // 在游戏开始时从 GitHub 获取排行榜
-        async function initLeaderboard() {
-            const githubLeaderboard = await getLeaderboardFromGitHub();
-            if (githubLeaderboard.length > 0) {
-                leaderboard = githubLeaderboard;
-                updateLeaderboard();
-            }
-        }
-
-        initLeaderboard();
+        updateLeaderboard();
     </script>
 </body>
 </html>
