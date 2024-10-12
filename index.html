@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数字方块射击游戏</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            border: 1px solid #000;
+        }
+        #upgradeButtons {
+            margin-top: 10px;
+        }
+        button {
+            margin: 0 5px;
+            padding: 5px 10px;
+        }
+        #gameOverModal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.4);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 300px;
+            text-align: center;
+        }
+        #leaderboard {
+            margin-top: 20px;
+            width: 300px;
+        }
+        #leaderboard table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        #leaderboard th, #leaderboard td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        #leaderboard th {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="400" height="600"></canvas>
+    <div id="upgradeButtons">
+        <button id="upgradeDamage">升级子弹强度 (50分)</button>
+        <button id="upgradeFireRate">升级射速 (50分)</button>
+    </div>
+    <div id="gameOverModal">
+        <div class="modal-content">
+            <h2>游戏结束！</h2>
+            <p>您坚持了 <span id="finalTime"></span> 秒</p>
+            <p>最终得分: <span id="finalScore"></span></p>
+            <input type="text" id="playerName" placeholder="输入您的名字">
+            <button id="submitScore">提交分数</button>
+            <button id="restartButton">重新开始</button>
+        </div>
+    </div>
+    <div id="leaderboard">
+        <h3>排行榜</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>排名</th>
+                    <th>名字</th>
+                    <th>得分</th>
+                    <th>时间</th>
+                </tr>
+            </thead>
+            <tbody id="leaderboardBody">
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const player = {
+            x: canvas.width / 2,
+            y: canvas.height - 30,
+            width: 50,
+            height: 20,
+            color: 'blue'
+        };
+
+        let bullets = [];
+        let enemies = [];
+        let score = 0;
+        let difficulty = 1;
+        let gameTime = 0;
+
+        let bulletDamage = 1;
+        let fireRate = 200; // 毫秒
+        let upgradeCosts = {
+            damage: 50,
+            fireRate: 50
+        };
+
+        let gameOver = false;
+        let fireInterval;
+
+        let leaderboard = [];
+
+        function drawPlayer() {
+            ctx.fillStyle = player.color;
+            ctx.fillRect(player.x - player.width / 2, player.y, player.width, player.height);
+        }
+
+        function drawBullets() {
+            ctx.fillStyle = 'red';
+            bullets.forEach(bullet => {
+                ctx.fillRect(bullet.x, bullet.y, 5, 10);
+            });
+        }
+
+        function drawEnemies() {
+            enemies.forEach(enemy => {
+                ctx.fillStyle = 'green';
+                ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+                ctx.fillStyle = 'white';
+                ctx.font = '20px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(enemy.value.toString(), enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
+            });
+        }
+
+        function drawScore() {
+            ctx.fillStyle = 'black';
+            ctx.font = '20px Arial';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            ctx.fillText(`得分: ${score}`, 10, 10);
+            ctx.fillText(`时间: ${Math.floor(gameTime)}秒`, 10, 40);
+            ctx.fillText(`子弹强度: ${bulletDamage}`, 10, 70);
+            ctx.fillText(`射速: ${(1000 / fireRate).toFixed(2)}发/秒`, 10, 100);
+            ctx.fillText(`难度: ${difficulty.toFixed(2)}`, 10, 130);
+        }
+
+        function moveBullets() {
+            bullets = bullets.filter(bullet => {
+                bullet.y -= 5;
+                return bullet.y > 0;
+            });
+        }
+
+        function moveEnemies() {
+            enemies = enemies.filter(enemy => {
+                enemy.y += enemy.speed * difficulty;
+                if (enemy.y + enemy.height >= canvas.height) {
+                    endGame();
+                    return false;
+                }
+                return true;
+            });
+        }
+
+        function spawnEnemy() {
+            if (Math.random() < 0.005 * difficulty) {
+                const minValue = Math.floor(1 + gameTime / 60); // 每60秒最小值增加1
+                const maxValue = Math.floor(5 + gameTime / 30); // 每30秒最大值增加1
+                const value = Math.floor(Math.random() * (maxValue - minValue + 1)) + minValue;
+
+                enemies.push({
+                    x: Math.random() * (canvas.width - 40),
+                    y: 0,
+                    width: 40,
+                    height: 40,
+                    speed: 0.2 + Math.random() * 0.3,
+                    value: value
+                });
+            }
+        }
+
+        function checkCollisions() {
+            bullets.forEach((bullet, bulletIndex) => {
+                enemies.forEach((enemy, enemyIndex) => {
+                    if (bullet.x < enemy.x + enemy.width &&
+                        bullet.x + 5 > enemy.x &&
+                        bullet.y < enemy.y + enemy.height &&
+                        bullet.y + 10 > enemy.y) {
+                        bullets.splice(bulletIndex, 1);
+                        enemy.value -= bulletDamage;
+                        if (enemy.value <= 0) {
+                            enemies.splice(enemyIndex, 1);
+                            score += 10;
+                        } else {
+                            score += 1;
+                        }
+                    }
+                });
+            });
+        }
+
+        function updateDifficulty() {
+            gameTime += 1/60;  // 假设游戏以60FPS运行
+            difficulty = 1 + gameTime / 180;  // 每180秒难度增加1
+        }
+
+        function gameLoop() {
+            if (gameOver) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            drawPlayer();
+            drawBullets();
+            drawEnemies();
+            drawScore();
+
+            moveBullets();
+            moveEnemies();
+            spawnEnemy();
+            checkCollisions();
+            updateDifficulty();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function endGame() {
+            gameOver = true;
+            clearInterval(fireInterval);
+            document.getElementById('gameOverModal').style.display = 'block';
+            document.getElementById('finalTime').textContent = Math.floor(gameTime);
+            document.getElementById('finalScore').textContent = score;
+        }
+
+        function restartGame() {
+            gameOver = false;
+            bullets = [];
+            enemies = [];
+            score = 0;
+            difficulty = 1;
+            gameTime = 0;
+            bulletDamage = 1;
+            fireRate = 200;
+            upgradeCosts = {
+                damage: 50,
+                fireRate: 50
+            };
+            document.getElementById('gameOverModal').style.display = 'none';
+            document.getElementById('upgradeDamage').textContent = `升级子弹强度 (${upgradeCosts.damage}分)`;
+            document.getElementById('upgradeFireRate').textContent = `升级射速 (${upgradeCosts.fireRate}分)`;
+            startFireInterval();
+            gameLoop();
+        }
+
+        function startFireInterval() {
+            clearInterval(fireInterval);
+            fireInterval = setInterval(() => {
+                bullets.push({
+                    x: player.x - 2.5,
+                    y: player.y
+                });
+            }, fireRate);
+        }
+
+        function submitScore() {
+            const playerName = document.getElementById('playerName').value.trim();
+            if (playerName) {
+                leaderboard.push({ name: playerName, score: score, time: Math.floor(gameTime) });
+                leaderboard.sort((a, b) => b.score - a.score);
+                leaderboard = leaderboard.slice(0, 10); // 只保留前10名
+                updateLeaderboard();
+                localStorage.setItem('leaderboard', JSON.stringify(leaderboard));
+            }
+        }
+
+        function updateLeaderboard() {
+            const leaderboardBody = document.getElementById('leaderboardBody');
+            leaderboardBody.innerHTML = '';
+            leaderboard.forEach((entry, index) => {
+                const row = leaderboardBody.insertRow();
+                row.insertCell(0).textContent = index + 1;
+                row.insertCell(1).textContent = entry.name;
+                row.insertCell(2).textContent = entry.score;
+                row.insertCell(3).textContent = entry.time + '秒';
+            });
+        }
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            player.x = e.clientX - rect.left;
+            player.x = Math.max(player.width / 2, Math.min(canvas.width - player.width / 2, player.x));
+        });
+
+        document.getElementById('upgradeDamage').addEventListener('click', () => {
+            if (score >= upgradeCosts.damage) {
+                score -= upgradeCosts.damage;
+                bulletDamage++;
+                upgradeCosts.damage = Math.ceil(upgradeCosts.damage * 1.2);
+                document.getElementById('upgradeDamage').textContent = `升级子弹强度 (${upgradeCosts.damage}分)`;
+            }
+        });
+
+        document.getElementById('upgradeFireRate').addEventListener('click', () => {
+            if (score >= upgradeCosts.fireRate) {
+                score -= upgradeCosts.fireRate;
+                fireRate = Math.max(50, fireRate - 10);
+                startFireInterval();
+                upgradeCosts.fireRate = Math.ceil(upgradeCosts.fireRate * 1.2);
+                document.getElementById('upgradeFireRate').textContent = `升级射速 (${upgradeCosts.fireRate}分)`;
+            }
+        });
+
+        document.getElementById('restartButton').addEventListener('click', restartGame);
+        document.getElementById('submitScore').addEventListener('click', submitScore);
+
+        // 从本地存储加载排行榜
+        const savedLeaderboard = localStorage.getItem('leaderboard');
+        if (savedLeaderboard) {
+            leaderboard = JSON.parse(savedLeaderboard);
+            updateLeaderboard();
+        }
+
+        startFireInterval();
+        gameLoop();
+    </script>
+</body>
+</html>
