@@ -325,7 +325,6 @@
                 leaderboard.sort((a, b) => b.time - a.time);
                 leaderboard = leaderboard.slice(0, 10); // 只保留前10名
                 updateLeaderboard();
-                localStorage.setItem('leaderboard', JSON.stringify(leaderboard));
                 canSubmitScore = false;
                 document.getElementById('submitScore').disabled = true;
             }
@@ -380,13 +379,6 @@
         document.getElementById('restartButton').addEventListener('click', restartGame);
         document.getElementById('submitScore').addEventListener('click', submitScore);
 
-        // 从本地存储加载排行榜
-        const savedLeaderboard = localStorage.getItem('leaderboard');
-        if (savedLeaderboard) {
-            leaderboard = JSON.parse(savedLeaderboard);
-            updateLeaderboard();
-        }
-
         startFireInterval();
         startTime = new Date().getTime();
         gameLoop();
@@ -436,7 +428,6 @@
                 leaderboard.sort((a, b) => b.time - a.time);
                 leaderboard = leaderboard.slice(0, 10); // 只保留前10名
                 updateLeaderboard();
-                localStorage.setItem('leaderboard', JSON.stringify(leaderboard));
                 canSubmitScore = false;
                 document.getElementById('submitScore').disabled = true;
 
