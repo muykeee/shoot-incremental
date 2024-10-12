@@ -1,0 +1,50 @@
+name: Update Leaderboard
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  update-leaderboard:
+    runs-on: ubuntu-latest
+    if: contains(github.event.issue.title, 'SCORE')
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Update leaderboard
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        # 解析issue标题中的分数
+        SCORE=$(echo "${{ github.event.issue.title }}" | grep -oP '(?<=SCORE:)\d+')
+        NAME=$(echo "${{ github.event.issue.title }}" | grep -oP '(?<=NAME:)[^,]+')
+        
+        # 读取现有的排行榜
+        LEADERBOARD=$(cat leaderboard.json | jq -c '.leaderboard')
+        
+        # 添加新的分数
+        LEADERBOARD=$(echo $LEADERBOARD | jq '. + [{"name": "'$NAME'", "score": '$SCORE'}]')
+        
+        # 排序并只保留前10名
+        LEADERBOARD=$(echo $LEADERBOARD | jq 'sort_by(-.score) | .[0:10]')
+        
+        # 更新leaderboard.json文件
+        echo '{"leaderboard": '$LEADERBOARD'}' > leaderboard.json
+        
+        # 提交更改
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add leaderboard.json
+        git commit -m "Update leaderboard"
+        git push
+
+    - name: Close Issue
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        issue_number="${{ github.event.issue.number }}"
+        curl -X PATCH \
+          -H "Authorization: token ${GITHUB_TOKEN}" \
+          -H "Accept: application/vnd.github.v3+json" \
+          "https://api.github.com/repos/${{ github.repository }}/issues/${issue_number}" \
+          -d '{"state":"closed"}'
