@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>数字方块射击游戏</title>
     <style>
         body {
@@ -15,16 +15,23 @@
             height: 100vh;
             background-color: #f0f0f0;
             font-family: Arial, sans-serif;
+            touch-action: none;
         }
         canvas {
             border: 1px solid #000;
+            max-width: 100%;
+            max-height: 70vh;
         }
         #upgradeButtons {
             margin-top: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
         }
         button {
-            margin: 0 5px;
-            padding: 5px 10px;
+            margin: 5px;
+            padding: 10px;
+            font-size: 16px;
         }
         #gameOverModal {
             display: none;
@@ -41,12 +48,14 @@
             margin: 15% auto;
             padding: 20px;
             border: 1px solid #888;
-            width: 300px;
+            width: 80%;
+            max-width: 300px;
             text-align: center;
         }
         #leaderboard {
             margin-top: 20px;
-            width: 300px;
+            width: 100%;
+            max-width: 300px;
         }
         #leaderboard table {
             width: 100%;
@@ -60,10 +69,16 @@
         #leaderboard th {
             background-color: #f2f2f2;
         }
+        @media (max-width: 600px) {
+            canvas {
+                width: 100%;
+                height: auto;
+            }
+        }
     </style>
 </head>
 <body>
-    <canvas id="gameCanvas" width="400" height="600"></canvas>
+    <canvas id="gameCanvas"></canvas>
     <div id="upgradeButtons">
         <button id="upgradeDamage">升级子弹强度 (50分)</button>
         <button id="upgradeFireRate">升级射速 (50分)</button>
@@ -85,7 +100,6 @@
                 <tr>
                     <th>排名</th>
                     <th>名字</th>
-                    <th>得分</th>
                     <th>时间</th>
                 </tr>
             </thead>
@@ -98,11 +112,31 @@
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
+        function resizeCanvas() {
+            const maxWidth = window.innerWidth * 0.95;
+            const maxHeight = window.innerHeight * 0.7;
+            const aspectRatio = 2 / 3;
+
+            let newWidth = maxWidth;
+            let newHeight = newWidth / aspectRatio;
+
+            if (newHeight > maxHeight) {
+                newHeight = maxHeight;
+                newWidth = newHeight * aspectRatio;
+            }
+
+            canvas.width = newWidth;
+            canvas.height = newHeight;
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
         const player = {
             x: canvas.width / 2,
             y: canvas.height - 30,
-            width: 50,
-            height: 20,
+            width: canvas.width * 0.125,
+            height: canvas.height * 0.033,
             color: 'blue'
         };
 
@@ -111,6 +145,7 @@
         let score = 0;
         let difficulty = 1;
         let gameTime = 0;
+        let startTime;
 
         let bulletDamage = 1;
         let fireRate = 200; // 毫秒
@@ -123,6 +158,7 @@
         let fireInterval;
 
         let leaderboard = [];
+        let canSubmitScore = true;
 
         function drawPlayer() {
             ctx.fillStyle = player.color;
@@ -132,7 +168,7 @@
         function drawBullets() {
             ctx.fillStyle = 'red';
             bullets.forEach(bullet => {
-                ctx.fillRect(bullet.x, bullet.y, 5, 10);
+                ctx.fillRect(bullet.x, bullet.y, canvas.width * 0.0125, canvas.height * 0.0167);
             });
         }
 
@@ -141,7 +177,7 @@
                 ctx.fillStyle = 'green';
                 ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
                 ctx.fillStyle = 'white';
-                ctx.font = '20px Arial';
+                ctx.font = `${enemy.width * 0.5}px Arial`;
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 ctx.fillText(enemy.value.toString(), enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
@@ -150,19 +186,19 @@
 
         function drawScore() {
             ctx.fillStyle = 'black';
-            ctx.font = '20px Arial';
+            ctx.font = `${canvas.width * 0.04}px Arial`;
             ctx.textAlign = 'left';
             ctx.textBaseline = 'top';
             ctx.fillText(`得分: ${score}`, 10, 10);
-            ctx.fillText(`时间: ${Math.floor(gameTime)}秒`, 10, 40);
-            ctx.fillText(`子弹强度: ${bulletDamage}`, 10, 70);
-            ctx.fillText(`射速: ${(1000 / fireRate).toFixed(2)}发/秒`, 10, 100);
-            ctx.fillText(`难度: ${difficulty.toFixed(2)}`, 10, 130);
+            ctx.fillText(`时间: ${Math.floor(gameTime)}秒`, 10, canvas.height * 0.07);
+            ctx.fillText(`子弹强度: ${bulletDamage}`, 10, canvas.height * 0.14);
+            ctx.fillText(`射速: ${(1000 / fireRate).toFixed(2)}发/秒`, 10, canvas.height * 0.21);
+            ctx.fillText(`难度: ${difficulty.toFixed(2)}`, 10, canvas.height * 0.28);
         }
 
         function moveBullets() {
             bullets = bullets.filter(bullet => {
-                bullet.y -= 5;
+                bullet.y -= canvas.height * 0.0083;
                 return bullet.y > 0;
             });
         }
@@ -185,11 +221,11 @@
                 const value = Math.floor(Math.random() * (maxValue - minValue + 1)) + minValue;
 
                 enemies.push({
-                    x: Math.random() * (canvas.width - 40),
+                    x: Math.random() * (canvas.width - canvas.width * 0.1),
                     y: 0,
-                    width: 40,
-                    height: 40,
-                    speed: 0.2 + Math.random() * 0.3,
+                    width: canvas.width * 0.1,
+                    height: canvas.width * 0.1,
+                    speed: canvas.height * 0.0003 + Math.random() * canvas.height * 0.0005,
                     value: value
                 });
             }
@@ -199,9 +235,9 @@
             bullets.forEach((bullet, bulletIndex) => {
                 enemies.forEach((enemy, enemyIndex) => {
                     if (bullet.x < enemy.x + enemy.width &&
-                        bullet.x + 5 > enemy.x &&
+                        bullet.x + canvas.width * 0.0125 > enemy.x &&
                         bullet.y < enemy.y + enemy.height &&
-                        bullet.y + 10 > enemy.y) {
+                        bullet.y + canvas.height * 0.0167 > enemy.y) {
                         bullets.splice(bulletIndex, 1);
                         enemy.value -= bulletDamage;
                         if (enemy.value <= 0) {
@@ -216,7 +252,8 @@
         }
 
         function updateDifficulty() {
-            gameTime += 1/60;  // 假设游戏以60FPS运行
+            const currentTime = new Date().getTime();
+            gameTime = (currentTime - startTime) / 1000;
             difficulty = 1 + gameTime / 180;  // 每180秒难度增加1
         }
 
@@ -260,10 +297,12 @@
                 damage: 50,
                 fireRate: 50
             };
+            canSubmitScore = true;
             document.getElementById('gameOverModal').style.display = 'none';
             document.getElementById('upgradeDamage').textContent = `升级子弹强度 (${upgradeCosts.damage}分)`;
             document.getElementById('upgradeFireRate').textContent = `升级射速 (${upgradeCosts.fireRate}分)`;
             startFireInterval();
+            startTime = new Date().getTime();
             gameLoop();
         }
 
@@ -271,20 +310,24 @@
             clearInterval(fireInterval);
             fireInterval = setInterval(() => {
                 bullets.push({
-                    x: player.x - 2.5,
+                    x: player.x - canvas.width * 0.00625,
                     y: player.y
                 });
             }, fireRate);
         }
 
         function submitScore() {
+            if (!canSubmitScore) return;
+
             const playerName = document.getElementById('playerName').value.trim();
             if (playerName) {
-                leaderboard.push({ name: playerName, score: score, time: Math.floor(gameTime) });
-                leaderboard.sort((a, b) => b.score - a.score);
+                leaderboard.push({ name: playerName, time: Math.floor(gameTime) });
+                leaderboard.sort((a, b) => b.time - a.time);
                 leaderboard = leaderboard.slice(0, 10); // 只保留前10名
                 updateLeaderboard();
                 localStorage.setItem('leaderboard', JSON.stringify(leaderboard));
+                canSubmitScore = false;
+                document.getElementById('submitScore').disabled = true;
             }
         }
 
@@ -295,9 +338,16 @@
                 const row = leaderboardBody.insertRow();
                 row.insertCell(0).textContent = index + 1;
                 row.insertCell(1).textContent = entry.name;
-                row.insertCell(2).textContent = entry.score;
-                row.insertCell(3).textContent = entry.time + '秒';
+                row.insertCell(2).textContent = entry.time + '秒';
             });
+        }
+
+        function handleTouchMove(e) {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            player.x = touch.clientX - rect.left;
+            player.x = Math.max(player.width / 2, Math.min(canvas.width - player.width / 2, player.x));
         }
 
         canvas.addEventListener('mousemove', (e) => {
@@ -305,6 +355,8 @@
             player.x = e.clientX - rect.left;
             player.x = Math.max(player.width / 2, Math.min(canvas.width - player.width / 2, player.x));
         });
+
+        canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
 
         document.getElementById('upgradeDamage').addEventListener('click', () => {
             if (score >= upgradeCosts.damage) {
@@ -336,6 +388,7 @@
         }
 
         startFireInterval();
+        startTime = new Date().getTime();
         gameLoop();
     </script>
 </body>
